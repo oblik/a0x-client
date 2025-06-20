@@ -275,9 +275,9 @@ export function GrantList({
               </TableCell>
             </TableRow>
           ) : (
-            grantsData.map((grant) => (
+            grantsData.map((grant, idx) => (
               <TableRow
-                key={grant.id}
+                key={`${grant.id}-${idx}`}
                 className={
                   selectedId === grant.id ? "bg-gray-50" : "hover:bg-gray-50"
                 }
@@ -288,7 +288,15 @@ export function GrantList({
                     <div className="flex items-center gap-1">
                       {isGrantUrlAnalysis(grant) ? (
                         <>
-                          {grant?.url || "URL Project"}
+                          {grant?.url
+                            ?.replace("https://", "")
+                            .replace("http://", "")
+                            .substring(0, 20) ||
+                            grant?.projectName
+                              ?.replace("https://", "")
+                              .replace("http://", "")
+                              .substring(0, 20) ||
+                            "URL Project"}
                           <span className="text-xs text-blue-500 inline-flex items-center">
                             <Info className="h-3 w-3 ml-1" />
                             <span className="ml-1">URL</span>

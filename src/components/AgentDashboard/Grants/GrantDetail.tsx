@@ -28,6 +28,7 @@ import {
   Twitter,
   MessageSquare,
   Play,
+  ArrowUp,
 } from "lucide-react";
 import { QualityMetrics } from "@/components/AgentDashboard/Grants/QualityMetrics";
 import { RepoMetrics } from "@/components/AgentDashboard/Grants/RepoMetrics";
@@ -65,6 +66,7 @@ interface GrantDetailProps {
       | "video"
       | "urlanalysis"
   ) => void;
+  onCloseGrantDetail: () => void;
 }
 
 // Función auxiliar para verificar el tipo de grant
@@ -76,6 +78,7 @@ const isGrantUrlAnalysis = (
 
 export function GrantDetail({
   grant,
+  onCloseGrantDetail,
   onApprove,
   onDeny,
   tabDetailSelected,
@@ -138,7 +141,8 @@ export function GrantDetail({
           <div>
             <CardTitle className="text-xl">
               {isGrantUrlAnalysis(grant)
-                ? grant.url.replace("https://", "").replace("http://", "") ||
+                ? grant.url?.replace("https://", "").replace("http://", "") ||
+                  grant.projectName ||
                   "URL Project"
                 : grant.projectName}
             </CardTitle>
@@ -147,18 +151,27 @@ export function GrantDetail({
               {new Date(grant.timestamp).toLocaleDateString()}
             </CardDescription>
           </div>
-          <Badge
-            variant={
-              grant.status === "approved"
-                ? "success"
-                : grant.status === "denied"
-                ? "destructive"
-                : "outline"
-            }
-            className="text-sm"
-          >
-            {grant.status.charAt(0).toUpperCase() + grant.status.slice(1)}
-          </Badge>
+          <div className="flex items-center">
+            <Badge
+              variant={
+                grant.status === "approved"
+                  ? "success"
+                  : grant.status === "denied"
+                  ? "destructive"
+                  : "outline"
+              }
+              className="text-sm"
+            >
+              {grant.status.charAt(0).toUpperCase() + grant.status.slice(1)}
+            </Badge>
+            <Button
+              variant="outline"
+              className="ml-2 p-0 px-2 h-6"
+              onClick={onCloseGrantDetail}
+            >
+              <ArrowUp className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-6">

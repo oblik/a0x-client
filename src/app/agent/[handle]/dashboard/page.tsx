@@ -6,32 +6,28 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 // Next
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import Image from "next/image";
 
-// Components
 // components
 import { FarcasterConnection } from "@/components/AgentDashboard/FarcasterConnection";
 import { FarcasterScheduledCasts } from "@/components/AgentDashboard/FarcasterScheduledCasts";
-
 import { Header } from "@/components/AgentDashboard/Header";
 import { KnowledgeChart } from "@/components/AgentDashboard/KnowledgeChart";
 import { TelegramConnection } from "@/components/AgentDashboard/TelegramConnection";
-import { TokenSection } from "@/components/AgentDashboard/TokenSection";
-
-// Shadcn components
+import { GrantManagement } from "@/components/AgentDashboard/Grants/GrantManager";
 import { TwitterConnection } from "@/components/AgentDashboard/TwitterConnection";
 import { TwitterScheduledPosts } from "@/components/AgentDashboard/TwitterScheduledPosts";
 import { ZoraCoinsConnection } from "@/components/AgentDashboard/ZoraCoinsConnection";
 import { ZoraCoinsManager } from "@/components/AgentDashboard/ZoraCoinsManager";
 import { AgentPersonality } from "@/components/AgentDetails/AgentPersonality";
+
+// Shadcn components
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/components/shadcn/tabs";
-
-import { ManualActions } from "@/components/AgentDashboard/QualifyAndAnnounceGrantWinnersAction/QAGWActions";
-
 import Spinner from "@/components/Spinner";
 
 // Types
@@ -46,28 +42,15 @@ import {
 // React-query
 import { useQuery } from "@tanstack/react-query";
 
-// Icons
-
 // icons
 import { ArrowLeft, Wallet } from "lucide-react";
-
-// Wagmi
-import { useAccount } from "wagmi";
-// wagmi
-
-// Icons
-
-// icons
-
-import { GrantManagement } from "@/components/AgentDashboard/Grants/GrantManager";
+import { DotsAnimation } from "@/components/Icons/DotsAnimation";
 import FarcasterIcon from "@/components/Icons/FarcasterIcon";
-import { usePrivy, useWallets } from "@privy-io/react-auth";
-import Image from "next/image";
 import { FaTelegram } from "react-icons/fa";
 import { FaCoins, FaXTwitter } from "react-icons/fa6";
-import { DotsAnimation } from "@/components/Icons/DotsAnimation";
 
 // Privy
+import { usePrivy, useWallets } from "@privy-io/react-auth";
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL;
 
@@ -599,7 +582,7 @@ export default function DashboardPage() {
 
                 {/* {agent.name === "jessexbt" && <ManualActions agent={agent} />} */}
 
-                {agent.token && <TokenSection agent={agent} />}
+                {/* {agent.token && <TokenSection agent={agent} />} */}
 
                 <div className="rounded-[20px] bg-white border border-gray-100 shadow-[0_0_0_1px_rgba(0,0,0,0.03),0_2px_4px_rgba(0,0,0,0.05)] p-6">
                   <Tabs

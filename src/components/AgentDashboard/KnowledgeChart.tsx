@@ -76,6 +76,7 @@ import {
 } from "@/utils/format-knowledge";
 import axios from "axios";
 import Link from "next/link";
+import FloatingEdge from "./FloatingEdge";
 
 const initialEdges: Edge[] = [];
 
@@ -83,10 +84,33 @@ const nodeTypes = {
   knowledge: KnowledgeNode,
 };
 
+const edgeTypes = {
+  floating: FloatingEdge,
+};
+
 const centerX = 500;
 const centerY = 300;
 const baseRadius = 250;
 const singleNodeRadius = 150;
+
+// Función para extraer el dominio de una URL
+const extractDomain = (url: string) => {
+  try {
+    const domain = new URL(url).hostname;
+    return domain.replace("www.", "");
+  } catch (e) {
+    return url; // Si no es una URL válida, devolver el string original
+  }
+};
+
+interface KnowledgeItem {
+  url: string;
+  type: string;
+  status?: string;
+  isDynamic?: boolean;
+  lastUpdated?: string;
+  data?: any;
+}
 
 export function KnowledgeChart({
   agent,
@@ -126,12 +150,11 @@ export function KnowledgeChart({
     {
       id: agentNodeId,
       type: "default",
-      position: { x: centerX, y: centerY },
+      position: { x: centerX, y: centerY - 200 },
       data: {
         label: (
           <div className="flex flex-col items-center justify-center gap-2">
             <Bot className="w-8 h-8 text-blue-500" />
-
             <span className="font-medium text-sm">
               {agent?.name || "Agent"}
             </span>
@@ -348,70 +371,451 @@ export function KnowledgeChart({
     const totalItems = knowledgeItems.length;
 
     if (totalItems > 0) {
-      const radius = totalItems === 1 ? singleNodeRadius : baseRadius;
-      const angleOffset = totalItems === 1 ? Math.PI / 2 : 0;
-
-      const knowledgeNodes: Node[] = knowledgeItems.map((item, index) => {
-        let x, y;
-
-        if (totalItems === 1) {
-          x = centerX;
-          y = centerY - singleNodeRadius;
-        } else if (totalItems === 2) {
-          const offset = 100;
-          x = centerX + (index === 0 ? -offset : offset);
-          y = centerY - singleNodeRadius;
-        } else if (totalItems === 3) {
-          const offset = 180;
-          x = centerX + (index === 0 ? -offset : index === 1 ? 0 : offset);
-          y = centerY - singleNodeRadius;
-        } else {
-          const angle = angleOffset + (2 * Math.PI * index) / totalItems;
-          x = centerX + radius * Math.cos(angle);
-          y = centerY + radius * Math.sin(angle);
-        }
-
-        const nodeId = `knowledge-${index}`;
-        return {
-          id: nodeId,
-          type: "knowledge",
-          position: { x, y },
+      console.log("🤖 Knowledge items", knowledgeItems);
+      // Nueva posición de categorías más alejadas
+      const categoryNodes: Node[] = [
+        {
+          id: "web-category",
+          type: "default",
+          position: { x: centerX - 450, y: centerY },
           data: {
-            label: item.url,
-            type: item.type,
-            status: item.status,
-            knowledgeId: item.url,
-            onDelete: handleDeleteKnowledge,
-            onRefresh: handleRefreshKnowledge,
-            isDynamic: item.isDynamic,
-            lastUpdated: item.lastUpdated,
+            label: (
+              <div className="flex flex-col items-center justify-center gap-2">
+                <Globe className="w-6 h-6 text-blue-500" />
+                <span className="font-medium text-sm">Web Sources</span>
+              </div>
+            ),
+          },
+          style: {
+            background: "linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)",
+            border: "2px solid #3b82f6",
+            borderRadius: "12px",
+            width: 120,
+            height: 80,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "8px",
+          },
+          sourcePosition: Position.Right,
+          targetPosition: Position.Left,
+        },
+        {
+          id: "pdf-category",
+          type: "default",
+          position: { x: centerX + 150, y: centerY + 200 },
+          data: {
+            label: (
+              <div className="flex flex-col items-center justify-center gap-2">
+                <FileUp className="w-6 h-6 text-green-500" />
+                <span className="font-medium text-sm">PDF Files</span>
+              </div>
+            ),
+          },
+          style: {
+            background: "linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)",
+            border: "2px solid #22c55e",
+            borderRadius: "12px",
+            width: 120,
+            height: 80,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "8px",
           },
           sourcePosition: Position.Top,
           targetPosition: Position.Bottom,
-        };
-      });
+        },
+        {
+          id: "farcaster-category",
+          type: "default",
+          position: { x: centerX + 450, y: centerY },
+          data: {
+            label: (
+              <div className="flex flex-col items-center justify-center gap-2">
+                <Image
+                  src="/assets/farcaster.svg"
+                  alt="Farcaster"
+                  width={24}
+                  height={24}
+                />
+                <span className="font-medium text-sm">Farcaster</span>
+              </div>
+            ),
+          },
+          style: {
+            background: "linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)",
+            border: "2px solid #8A63D2",
+            borderRadius: "12px",
+            width: 120,
+            height: 80,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "8px",
+          },
+          sourcePosition: Position.Left,
+          targetPosition: Position.Right,
+        },
+      ];
 
-      const knowledgeEdges: Edge[] = knowledgeItems.map((item, index) => {
-        const sourceNodeId = `knowledge-${index}`;
-        return {
-          id: `edge-${sourceNodeId}-to-${agentNodeId}`,
-          source: sourceNodeId,
-          target: agentNodeId,
-          animated: true,
-          style: { strokeDasharray: "5,5", stroke: "#aaa" },
-        };
-      });
-
-      setNodes([initialNodes[0], ...knowledgeNodes]);
-      const edgeIdsToDelete = knowledgeItems
-        .map((_, index) => `knowledge-${index}`)
-        .filter((nodeId) => !knowledgeNodes.some((kn) => kn.id === nodeId));
-
-      const filteredEdges = knowledgeEdges.filter(
-        (edge) => !edgeIdsToDelete.includes(edge.source)
+      // Group knowledge items by type
+      const webItems = knowledgeItems.filter((item) => item.type === "website");
+      const pdfItems = knowledgeItems.filter((item) => item.type === "pdf");
+      const farcasterItems = knowledgeItems.filter(
+        (item) => item.type === "farcaster"
       );
 
-      setEdges(filteredEdges);
+      // Función para calcular posiciones radiales mejorada
+      const calculateRadialPosition = (
+        centerX: number,
+        centerY: number,
+        radius: number,
+        index: number,
+        totalItems: number,
+        startAngle: number = 0
+      ) => {
+        if (totalItems === 1) {
+          // Si solo hay un subnodo, colócalo a la derecha
+          return {
+            x: centerX + radius,
+            y: centerY,
+          };
+        }
+        const angle = index * ((2 * Math.PI) / totalItems) + startAngle;
+        return {
+          x: centerX + radius * Math.cos(angle),
+          y: centerY + radius * Math.sin(angle),
+        };
+      };
+
+      // Create knowledge nodes for each category with radial positions
+      const createKnowledgeNodes = (
+        items: KnowledgeItem[],
+        categoryId: string,
+        centerX: number,
+        centerY: number,
+        radius: number,
+        startAngle: number = 0
+      ) => {
+        // Solo agrupar por dominio si es categoría web y hay más de 2 URLs del mismo dominio
+        if (categoryId === "web-category") {
+          // Agrupar items por dominio
+          const groupedItems = items.reduce((acc, item) => {
+            const domain = extractDomain(item.url);
+            if (!acc[domain]) {
+              acc[domain] = [];
+            }
+            acc[domain].push(item);
+            return acc;
+          }, {} as Record<string, KnowledgeItem[]>);
+
+          // Filtrar dominios que tienen 2 o más URLs
+          const domainsWithMultipleUrls = Object.entries(groupedItems).filter(
+            ([_, urls]) => urls.length >= 2
+          );
+          const singleUrlDomains = Object.entries(groupedItems).filter(
+            ([_, urls]) => urls.length === 1
+          );
+
+          const nodes: Node[] = [];
+          const domainNodes: Node[] = [];
+          const domainRadius = radius * 0.8; // Radio para los nodos de dominio
+          const itemRadius = radius * 0.5; // Aumentado el radio para los subnodos
+
+          // Calcular el ángulo total disponible para los dominios
+          const totalDomains =
+            domainsWithMultipleUrls.length + singleUrlDomains.length;
+          const angleStep = (2 * Math.PI) / totalDomains;
+
+          // Crear nodos para dominios con múltiples URLs
+          domainsWithMultipleUrls.forEach(
+            ([domain, domainItems], domainIndex) => {
+              // Calcular posición del nodo de dominio
+              const domainAngle = startAngle + domainIndex * angleStep;
+              const domainPosition = {
+                x: centerX + domainRadius * Math.cos(domainAngle),
+                y: centerY + domainRadius * Math.sin(domainAngle),
+              };
+
+              // Crear nodo de dominio
+              const domainNode: Node = {
+                id: `domain-${domain}`,
+                type: "default",
+                position: domainPosition,
+                data: {
+                  label: (
+                    <div className="flex flex-col items-center justify-center gap-1">
+                      <Globe className="w-4 h-4 text-blue-500" />
+                      <span className="font-medium text-xs">{domain}</span>
+                    </div>
+                  ),
+                },
+                style: {
+                  background:
+                    "linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)",
+                  border: "2px solid #3b82f6",
+                  borderRadius: "8px",
+                  width: 100,
+                  height: 60,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "4px",
+                },
+                sourcePosition: Position.Right,
+                targetPosition: Position.Left,
+              };
+
+              domainNodes.push(domainNode);
+
+              // Calcular el ángulo para los subnodos de este dominio
+              const subNodeAngleStep = Math.PI / (domainItems.length + 1); // Reducido el rango de ángulo
+              const subNodeStartAngle = domainAngle - Math.PI / 2; // Ajustado para mejor distribución
+
+              // Crear nodos para los items de este dominio
+              domainItems.forEach((item, itemIndex) => {
+                const subNodeAngle =
+                  subNodeStartAngle + (itemIndex + 1) * subNodeAngleStep;
+                const itemPosition = {
+                  x: domainPosition.x + itemRadius * Math.cos(subNodeAngle),
+                  y: domainPosition.y + itemRadius * Math.sin(subNodeAngle),
+                };
+
+                const itemNode: Node = {
+                  id: `knowledge-${item.url}`,
+                  type: "knowledge",
+                  position: itemPosition,
+                  data: {
+                    label: item.url,
+                    type: item.type,
+                    status: item.status,
+                    knowledgeId: item.url,
+                    onDelete: handleDeleteKnowledge,
+                    onRefresh: handleRefreshKnowledge,
+                    isDynamic: item.isDynamic,
+                    lastUpdated: item.lastUpdated,
+                  },
+                  sourcePosition: Position.Right,
+                  targetPosition: Position.Left,
+                };
+
+                nodes.push(itemNode);
+              });
+            }
+          );
+
+          // Crear nodos para URLs únicas
+          const singleUrlNodes = singleUrlDomains.flatMap(
+            ([_, items], domainIndex) => {
+              const domainAngle =
+                startAngle +
+                (domainsWithMultipleUrls.length + domainIndex) * angleStep;
+              return items.map((item) => {
+                const position = {
+                  x: centerX + radius * Math.cos(domainAngle),
+                  y: centerY + radius * Math.sin(domainAngle),
+                };
+
+                return {
+                  id: `knowledge-${item.url}`,
+                  type: "knowledge",
+                  position,
+                  data: {
+                    label: item.url,
+                    type: item.type,
+                    status: item.status,
+                    knowledgeId: item.url,
+                    onDelete: handleDeleteKnowledge,
+                    onRefresh: handleRefreshKnowledge,
+                    isDynamic: item.isDynamic,
+                    lastUpdated: item.lastUpdated,
+                  },
+                  sourcePosition: Position.Right,
+                  targetPosition: Position.Left,
+                };
+              });
+            }
+          );
+
+          return [...domainNodes, ...nodes, ...singleUrlNodes];
+        } else {
+          // Para PDF y Farcaster, mantener la estructura original pero con distribución radial mejorada
+          const angleStep = (2 * Math.PI) / items.length;
+          return items.map((item, index) => {
+            const angle = startAngle + index * angleStep;
+            const position = {
+              x: centerX + radius * Math.cos(angle),
+              y: centerY + radius * Math.sin(angle),
+            };
+
+            return {
+              id: `knowledge-${item.url}`,
+              type: "knowledge",
+              position,
+              data: {
+                label: item.url,
+                type: item.type,
+                status: item.status,
+                knowledgeId: item.url,
+                onDelete: handleDeleteKnowledge,
+                onRefresh: handleRefreshKnowledge,
+                isDynamic: item.isDynamic,
+                lastUpdated: item.lastUpdated,
+              },
+              sourcePosition:
+                categoryId === "web-category"
+                  ? Position.Right
+                  : categoryId === "farcaster-category"
+                  ? Position.Left
+                  : Position.Top,
+              targetPosition:
+                categoryId === "web-category"
+                  ? Position.Left
+                  : categoryId === "farcaster-category"
+                  ? Position.Right
+                  : Position.Bottom,
+            };
+          });
+        }
+      };
+
+      // Crear nodos con distribución radial y radio mayor
+      const webNodes = createKnowledgeNodes(
+        webItems,
+        "web-category",
+        centerX - 450, // X de la categoría web
+        centerY, // Y de la categoría web
+        200, // Radio de distribución aumentado
+        Math.PI / 2 // Empezar desde arriba
+      );
+
+      const pdfNodes = createKnowledgeNodes(
+        pdfItems,
+        "pdf-category",
+        centerX + 150, // X de la categoría PDF (ajustado)
+        centerY + 200, // Y de la categoría PDF
+        200, // Radio de distribución aumentado
+        0 // Empezar desde la derecha
+      );
+
+      const farcasterNodes = createKnowledgeNodes(
+        farcasterItems,
+        "farcaster-category",
+        centerX + 450, // X de la categoría farcaster
+        centerY, // Y de la categoría farcaster
+        200, // Radio de distribución aumentado
+        -Math.PI / 2 // Empezar desde abajo
+      );
+
+      // Edges de subnodos a categoría
+      const createEdges = (nodes: Node[], categoryId: string) => {
+        const edges: Edge[] = [];
+
+        nodes.forEach((node) => {
+          if (node.id.startsWith("domain-")) {
+            // Conectar nodo de dominio a la categoría principal
+            edges.push({
+              id: `edge-${node.id}-to-${categoryId}`,
+              source: node.id,
+              target: categoryId,
+              animated: true,
+              type: "floating",
+              style: {
+                strokeDasharray: "5,5",
+                stroke:
+                  categoryId === "farcaster-category"
+                    ? "#8A63D2"
+                    : categoryId === "pdf-category"
+                    ? "#22c55e"
+                    : "#3b82f6",
+              },
+            });
+          } else if (node.id.startsWith("knowledge-")) {
+            // Si es un nodo de conocimiento, verificar si pertenece a un dominio
+            const url = node.data.label as string;
+            const domain = extractDomain(url);
+            const domainNode = nodes.find((n) => n.id === `domain-${domain}`);
+
+            if (domainNode) {
+              // Si existe un nodo de dominio, conectar a él
+              edges.push({
+                id: `edge-${node.id}-to-domain-${domain}`,
+                source: node.id,
+                target: `domain-${domain}`,
+                animated: true,
+                type: "floating",
+                style: {
+                  strokeDasharray: "5,5",
+                  stroke:
+                    categoryId === "farcaster-category"
+                      ? "#8A63D2"
+                      : categoryId === "pdf-category"
+                      ? "#22c55e"
+                      : "#3b82f6",
+                },
+              });
+            } else {
+              // Si no hay nodo de dominio, conectar directamente a la categoría
+              edges.push({
+                id: `edge-${node.id}-to-${categoryId}`,
+                source: node.id,
+                target: categoryId,
+                animated: true,
+                type: "floating",
+                style: {
+                  strokeDasharray: "5,5",
+                  stroke:
+                    categoryId === "farcaster-category"
+                      ? "#8A63D2"
+                      : categoryId === "pdf-category"
+                      ? "#22c55e"
+                      : "#3b82f6",
+                },
+              });
+            }
+          }
+        });
+
+        return edges;
+      };
+
+      // Edges de categoría a nodo principal
+      const categoryEdges = categoryNodes.map((node) => ({
+        id: `edge-${node.id}-to-${agentNodeId}`,
+        source: node.id,
+        target: agentNodeId,
+        animated: true,
+        type: "floating",
+        style: {
+          strokeDasharray: "5,5",
+          stroke:
+            node.id === "farcaster-category"
+              ? "#8A63D2"
+              : node.id === "pdf-category"
+              ? "#22c55e"
+              : "#3b82f6",
+        },
+      }));
+
+      // Set all nodes and edges
+      setNodes([
+        initialNodes[0],
+        ...categoryNodes,
+        ...webNodes,
+        ...pdfNodes,
+        ...farcasterNodes,
+      ]);
+      setEdges([
+        ...categoryEdges,
+        ...createEdges(webNodes, "web-category"),
+        ...createEdges(pdfNodes, "pdf-category"),
+        ...createEdges(farcasterNodes, "farcaster-category"),
+      ]);
     } else {
       setNodes(initialNodes);
       setEdges(initialEdges);
@@ -425,6 +829,7 @@ export function KnowledgeChart({
           {
             ...params,
             animated: true,
+            type: "floating",
             style: { strokeDasharray: "5,5", stroke: "#aaa" },
           },
           eds
@@ -437,71 +842,87 @@ export function KnowledgeChart({
     (label: string, tempId: string, status: string, type: string) => {
       if (!label.trim()) return;
 
-      const newEdge: Edge = {
-        id: `edge-${tempId}-to-${agentNodeId}`,
+      // Determine category and position based on type
+      let categoryId = "";
+      let startX = centerX;
+      let startY = centerY;
+      let direction: "horizontal" | "vertical" = "horizontal";
+
+      if (type === "web") {
+        categoryId = "web-category";
+        startX = centerX - 400;
+        startY = centerY;
+        direction = "vertical";
+      } else if (type === "pdf") {
+        categoryId = "pdf-category";
+        startX = centerX;
+        startY = centerY + 200;
+        direction = "horizontal";
+      } else if (type === "farcaster") {
+        categoryId = "farcaster-category";
+        startX = centerX + 400;
+        startY = centerY;
+        direction = "vertical";
+      }
+
+      // Count existing nodes of this type
+      const existingNodesOfType = nodes.filter(
+        (node) => node.type === "knowledge" && node.data.type === type
+      );
+      const nodeIndex = existingNodesOfType.length;
+
+      // Create new node
+      const newNode: Node = {
+        id: tempId,
+        type: "knowledge",
+        position: {
+          x: direction === "horizontal" ? startX + nodeIndex * 150 : startX,
+          y: direction === "vertical" ? startY + nodeIndex * 150 : startY,
+        },
+        data: {
+          label: label,
+          type: type,
+          status: status,
+          knowledgeId: label,
+          onDelete: handleDeleteKnowledge,
+          onRefresh: handleRefreshKnowledge,
+          isDynamic: type === "web" ? isDynamicKnowledge : false,
+        },
+        sourcePosition:
+          categoryId === "web-category"
+            ? Position.Right
+            : categoryId === "farcaster-category"
+            ? Position.Left
+            : Position.Top,
+        targetPosition:
+          categoryId === "web-category"
+            ? Position.Left
+            : categoryId === "farcaster-category"
+            ? Position.Right
+            : Position.Bottom,
+      };
+
+      // Create edges
+      const categoryEdge: Edge = {
+        id: `edge-${tempId}-to-${categoryId}`,
         source: tempId,
-        target: agentNodeId,
+        target: categoryId,
         animated: true,
         style: {
           strokeDasharray: "5,5",
-          stroke: type === "farcaster" ? "#8A63D2" : "#aaa",
+          stroke:
+            type === "farcaster"
+              ? "#8A63D2"
+              : type === "pdf"
+              ? "#22c55e"
+              : "#3b82f6",
         },
       };
 
-      setEdges((eds) => addEdge(newEdge, eds));
-
-      setNodes((nds) => {
-        const currentKnowledgeNodes = nds.filter((n) => n.id !== agentNodeId);
-        const futureIndex = currentKnowledgeNodes.length;
-        const totalItemsIncludingNew = futureIndex + 1;
-
-        const radius =
-          totalItemsIncludingNew === 1 ? singleNodeRadius : baseRadius;
-        const angleOffset = totalItemsIncludingNew === 1 ? Math.PI / 2 : 0;
-
-        let x, y;
-
-        if (totalItemsIncludingNew === 1) {
-          x = centerX;
-          y = centerY - singleNodeRadius;
-        } else if (totalItemsIncludingNew === 2) {
-          const offset = 100;
-          x = centerX + (futureIndex === 0 ? -offset : offset);
-          y = centerY - singleNodeRadius;
-        } else if (totalItemsIncludingNew === 3) {
-          const offset = 150;
-          x =
-            centerX +
-            (futureIndex === 0 ? -offset : futureIndex === 1 ? 0 : offset);
-          y = centerY - singleNodeRadius;
-        } else {
-          const angle =
-            angleOffset + (2 * Math.PI * futureIndex) / totalItemsIncludingNew;
-          x = centerX + radius * Math.cos(angle);
-          y = centerY + radius * Math.sin(angle);
-        }
-
-        const newNode: Node = {
-          id: tempId,
-          type: "knowledge",
-          position: { x, y },
-          data: {
-            label: label,
-            type: type,
-            status: status,
-            knowledgeId: label,
-            onDelete: handleDeleteKnowledge,
-            onRefresh: handleRefreshKnowledge,
-            isDynamic: type === "web" ? isDynamicKnowledge : false,
-          },
-          sourcePosition: Position.Top,
-          targetPosition: Position.Bottom,
-        };
-
-        return [...nds, newNode];
-      });
+      setNodes((nds) => [...nds, newNode]);
+      setEdges((eds) => [...eds, categoryEdge]);
     },
-    [setNodes, setEdges, agentNodeId]
+    [setNodes, setEdges, centerX, centerY, nodes, isDynamicKnowledge]
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -748,6 +1169,7 @@ export function KnowledgeChart({
           minZoom={0.2}
           maxZoom={1.5}
           proOptions={{ hideAttribution: true }}
+          edgeTypes={edgeTypes}
         >
           <Background />
           <Controls />
@@ -991,7 +1413,7 @@ export function KnowledgeChart({
           }
         }}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl w-full">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span>Knowledge Source</span>
@@ -1035,17 +1457,23 @@ export function KnowledgeChart({
               </div>
             </DialogTitle>
 
-            <DialogDescription className="flex flex-col gap-2">
+            <DialogDescription className="flex flex-col gap-2 w-full">
               <div className="flex gap-2">
                 <span className="text-sm font-medium">Source: </span>
-                <Link
-                  href={selectedKnowledge?.url || ""}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-500 hover:underline"
-                >
-                  {selectedKnowledge?.url}
-                </Link>
+                {selectedKnowledge?.type === "website" ? (
+                  <Link
+                    href={selectedKnowledge?.url || ""}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-500 hover:underline"
+                  >
+                    {selectedKnowledge?.url}
+                  </Link>
+                ) : (
+                  <span className="text-sm font-medium">
+                    {selectedKnowledge?.url}
+                  </span>
+                )}
               </div>
 
               <div className="flex gap-2">
@@ -1066,11 +1494,11 @@ export function KnowledgeChart({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex flex-col h-[calc(70vh-120px)]">
+          <div className="flex flex-col h-[calc(70vh-120px)] w-full">
             <h3 className="text-lg font-semibold mb-2 text-gray-700">
               Summary:
             </h3>
-            <div className="flex-grow bg-gray-50 p-4 rounded-md border overflow-y-auto">
+            <div className="bg-gray-50 p-4 rounded-md border overflow-y-auto w-full">
               {selectedKnowledge?.data ? (
                 isEditing ? (
                   <Textarea

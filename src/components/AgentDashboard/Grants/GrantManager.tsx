@@ -34,13 +34,138 @@ function isGrant(grant: BaseGrant): grant is Grant {
 }
 
 function isGrantUrlAnalysis(grant: BaseGrant): grant is GrantUrlAnalysis {
-  return "normalizedUrl" in grant && "url" in grant;
+  return grant.hasOwnProperty("urlAnalysis");
 }
 
 interface GrantManagerProps {
   grantsData: (Grant | GrantUrlAnalysis)[];
   agent: Agent;
 }
+
+// Helper functions para filtrar grants
+const useGrantFilters = (
+  grants: (Grant | GrantUrlAnalysis)[],
+  selectedWeek: string
+) => {
+  // Función auxiliar para obtener la marca de tiempo cuando se manejan diferentes tipos
+  const getGrantTimestamp = (grant: BaseGrant): Date => {
+    if (isGrantUrlAnalysis(grant) && !grant.timestamp) {
+      // Si es GrantUrlAnalysis y no tiene timestamp, usar lastUpdated
+      return new Date((grant as GrantUrlAnalysis).lastUpdated);
+    }
+    return new Date(grant.timestamp);
+  };
+
+  // Filter grants by selected week
+  const filteredByWeek = useMemo(() => {
+    return selectedWeek === "all"
+      ? grants
+      : grants.filter((grant) => {
+          // Extract components from the selectedWeek value: week1-3-2024
+          const parts = selectedWeek.split("-");
+          if (parts.length < 3) return false; // Skip if format is incorrect
+
+          const weekPart = parts[0]; // "week1"
+          const weekNumber = parseInt(weekPart.replace("week", ""));
+          const month = parseInt(parts[1]);
+          const year = parseInt(parts[2]);
+
+          // Convert grant timestamp to a Date object
+          const grantDate = getGrantTimestamp(grant);
+          const grantYear = grantDate.getFullYear();
+          const grantMonth = grantDate.getMonth();
+
+          // Check if the grant belongs to the selected year and month
+          if (grantYear !== year || grantMonth !== month) {
+            return false;
+          }
+
+          // Calculate which week of the month this grant belongs to
+          const dayOfMonth = grantDate.getDate();
+          // Calculate week number (1-based) within the month
+          // Week 1: days 1-7, Week 2: days 8-14, Week 3: days 15-21, Week 4: days 22-28, Week 5: days 29-31
+          const grantWeekNumber = Math.ceil(dayOfMonth / 7);
+
+          // Match if the grant's week number matches the selected week number
+          return grantWeekNumber === weekNumber;
+        });
+  }, [grants, selectedWeek]);
+
+  // Helper function to get grants by type and status
+  const getGrantsByTypeAndStatus = (
+    grantType: "repository" | "url" | "all",
+    status: GrantStatus | "all"
+  ): (Grant | GrantUrlAnalysis)[] => {
+    return filteredByWeek
+      .filter((grant, idx) => {
+        // Filter by status
+        const statusMatch = status === "all" || grant.status === status;
+
+        console.log(`grant ${idx}`, grant);
+
+        // Filter by type
+        let typeMatch = true;
+        if (grantType === "repository") {
+          typeMatch = isGrant(grant);
+        } else if (grantType === "url") {
+          typeMatch = isGrantUrlAnalysis(grant);
+        }
+        // If grantType is 'all', typeMatch remains true
+
+        return statusMatch && typeMatch;
+      })
+      .sort((a, b) => {
+        // Sort by date, most recent first
+        const dateA = getGrantTimestamp(a);
+        const dateB = getGrantTimestamp(b);
+        return dateB.getTime() - dateA.getTime();
+      });
+  };
+
+  return {
+    filteredByWeek,
+    getGrantsByTypeAndStatus,
+  };
+};
+
+// Component para renderizar una sección de grants
+interface GrantSectionProps {
+  title: string;
+  grants: (Grant | GrantUrlAnalysis)[];
+  onSelect: (grant: Grant | GrantUrlAnalysis) => void;
+  onApprove: (id: string) => void;
+  onDeny: (id: string) => void;
+  onUpdateAmount: (id: string, amount: number) => Promise<{ message: string }>;
+  onSendGrant: (id: string, amount: number) => void;
+  selectedId?: string;
+  agentId: string | undefined;
+}
+
+const GrantSection = ({
+  title,
+  grants,
+  onSelect,
+  onApprove,
+  onDeny,
+  onUpdateAmount,
+  onSendGrant,
+  selectedId,
+  agentId,
+}: GrantSectionProps) => (
+  <div>
+    <h3 className="text-lg font-semibold mb-4">{title}</h3>
+    <GrantList
+      grants={grants}
+      onSelect={onSelect}
+      onApprove={onApprove}
+      onDeny={onDeny}
+      onUpdateAmount={onUpdateAmount}
+      onSendGrant={onSendGrant}
+      selectedId={selectedId}
+      agentId={agentId!}
+    />
+  </div>
+);
 
 export function GrantManagement({ grantsData, agent }: GrantManagerProps) {
   const [grants, setGrants] =
@@ -53,6 +178,12 @@ export function GrantManagement({ grantsData, agent }: GrantManagerProps) {
   const [isProcessingTransaction, setIsProcessingTransaction] = useState(false);
 
   const { toast } = useToast();
+
+  // Use the custom hook for grant filtering
+  const { filteredByWeek, getGrantsByTypeAndStatus } = useGrantFilters(
+    grants,
+    selectedWeek
+  );
 
   const sendStatusUpdate = async (id: string, status: GrantStatus) => {
     try {
@@ -196,50 +327,6 @@ export function GrantManagement({ grantsData, agent }: GrantManagerProps) {
     }
   };
 
-  // Función auxiliar para obtener la marca de tiempo cuando se manejan diferentes tipos
-  const getGrantTimestamp = (grant: BaseGrant): Date => {
-    if (isGrantUrlAnalysis(grant) && !grant.timestamp) {
-      // Si es GrantUrlAnalysis y no tiene timestamp, usar lastUpdated
-      return new Date((grant as GrantUrlAnalysis).lastUpdated);
-    }
-    return new Date(grant.timestamp);
-  };
-
-  // Filter grants by selected week
-  const filteredByWeek = useMemo(() => {
-    return selectedWeek === "all"
-      ? grants
-      : grants.filter((grant) => {
-          // Extract components from the selectedWeek value: week1-3-2024
-          const parts = selectedWeek.split("-");
-          if (parts.length < 3) return false; // Skip if format is incorrect
-
-          const weekPart = parts[0]; // "week1"
-          const weekNumber = parseInt(weekPart.replace("week", ""));
-          const month = parseInt(parts[1]);
-          const year = parseInt(parts[2]);
-
-          // Convert grant timestamp to a Date object
-          const grantDate = getGrantTimestamp(grant);
-          const grantYear = grantDate.getFullYear();
-          const grantMonth = grantDate.getMonth();
-
-          // Check if the grant belongs to the selected year and month
-          if (grantYear !== year || grantMonth !== month) {
-            return false;
-          }
-
-          // Calculate which week of the month this grant belongs to
-          const dayOfMonth = grantDate.getDate();
-          // Calculate week number (1-based) within the month
-          // Week 1: days 1-7, Week 2: days 8-14, Week 3: days 15-21, Week 4: days 22-28, Week 5: days 29-31
-          const grantWeekNumber = Math.ceil(dayOfMonth / 7);
-
-          // Match if the grant's week number matches the selected week number
-          return grantWeekNumber === weekNumber;
-        });
-  }, [grants, selectedWeek]);
-
   const { data: balanceOfUSDC, refetch: refetchBalanceOfUSDC } =
     useReadContract({
       address: usdcAddress as `0x${string}`,
@@ -297,6 +384,47 @@ export function GrantManagement({ grantsData, agent }: GrantManagerProps) {
     }
   };
 
+  const onCloseGrantDetail = () => {
+    setSelectedGrant(null);
+  };
+
+  // Helper function to render grant sections based on status
+  const renderGrantSections = (
+    status: GrantStatus,
+    onDenyAction = handleDeny
+  ) => {
+    const selectedIdProp = selectedGrant?.id
+      ? { selectedId: selectedGrant.id as string }
+      : {};
+
+    return (
+      <div className="space-y-4">
+        <GrantSection
+          title="Repository Grants"
+          grants={getGrantsByTypeAndStatus("repository", status)}
+          onSelect={handleGrantSelected}
+          onApprove={handleApprove}
+          onDeny={onDenyAction}
+          onUpdateAmount={updateGrantAmount}
+          onSendGrant={handleSendGrant}
+          {...selectedIdProp}
+          agentId={agent.agentId}
+        />
+        <GrantSection
+          title="URL Grants"
+          grants={getGrantsByTypeAndStatus("url", status)}
+          onSelect={handleGrantSelected}
+          onApprove={handleApprove}
+          onDeny={onDenyAction}
+          onUpdateAmount={updateGrantAmount}
+          onSendGrant={handleSendGrant}
+          {...selectedIdProp}
+          agentId={agent.agentId}
+        />
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6 relative">
       {isProcessingTransaction && (
@@ -321,8 +449,10 @@ export function GrantManagement({ grantsData, agent }: GrantManagerProps) {
           Total Grants{" "}
           {tabValueSelected.charAt(0).toUpperCase() + tabValueSelected.slice(1)}{" "}
           {
-            filteredByWeek.filter((grant) => grant.status === tabValueSelected)
-              .length
+            getGrantsByTypeAndStatus(
+              "all",
+              tabValueSelected as GrantStatus | "all"
+            ).length
           }
         </Label>
 
@@ -359,197 +489,45 @@ export function GrantManagement({ grantsData, agent }: GrantManagerProps) {
         {agent.agentId && (
           <>
             <TabsContent value="pending">
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">
-                    Repository Grants
-                  </h3>
-                  <GrantList
-                    grants={filteredByWeek.filter(
-                      (grant) =>
-                        grant.status === "pending" && !isGrantUrlAnalysis(grant)
-                    )}
-                    onSelect={handleGrantSelected}
-                    onApprove={handleApprove}
-                    onDeny={handleDeny}
-                    onUpdateAmount={updateGrantAmount}
-                    onSendGrant={handleSendGrant}
-                    selectedId={selectedGrant?.id}
-                    agentId={agent.agentId}
-                  />
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">URL Grants</h3>
-                  <GrantList
-                    grants={filteredByWeek.filter(
-                      (grant) =>
-                        grant.status === "pending" && isGrantUrlAnalysis(grant)
-                    )}
-                    onSelect={handleGrantSelected}
-                    onApprove={handleApprove}
-                    onDeny={handleDeny}
-                    onUpdateAmount={updateGrantAmount}
-                    onSendGrant={handleSendGrant}
-                    selectedId={selectedGrant?.id}
-                    agentId={agent.agentId}
-                  />
-                </div>
-              </div>
+              {renderGrantSections("pending")}
             </TabsContent>
             <TabsContent value="approved">
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">
-                    Repository Grants
-                  </h3>
-                  <GrantList
-                    grants={filteredByWeek.filter(
-                      (grant) =>
-                        grant.status === "approved" &&
-                        !isGrantUrlAnalysis(grant)
-                    )}
-                    onSelect={handleGrantSelected}
-                    onApprove={handleApprove}
-                    onDeny={handleDeny}
-                    onUpdateAmount={updateGrantAmount}
-                    onSendGrant={handleSendGrant}
-                    selectedId={selectedGrant?.id}
-                    agentId={agent.agentId}
-                  />
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">URL Grants</h3>
-                  <GrantList
-                    grants={filteredByWeek.filter(
-                      (grant) =>
-                        grant.status === "approved" && isGrantUrlAnalysis(grant)
-                    )}
-                    onSelect={handleGrantSelected}
-                    onApprove={handleApprove}
-                    onDeny={handleDeny}
-                    onUpdateAmount={updateGrantAmount}
-                    onSendGrant={handleSendGrant}
-                    selectedId={selectedGrant?.id}
-                    agentId={agent.agentId}
-                  />
-                </div>
-              </div>
+              {renderGrantSections("approved")}
             </TabsContent>
             <TabsContent value="denied">
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">
-                    Repository Grants
-                  </h3>
-                  <GrantList
-                    grants={filteredByWeek.filter(
-                      (grant) =>
-                        grant.status === "denied" && !isGrantUrlAnalysis(grant)
-                    )}
-                    onSelect={handleGrantSelected}
-                    onApprove={handleApprove}
-                    onDeny={handleReturnToPending}
-                    onUpdateAmount={updateGrantAmount}
-                    onSendGrant={handleSendGrant}
-                    selectedId={selectedGrant?.id}
-                    agentId={agent.agentId}
-                  />
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">URL Grants</h3>
-                  <GrantList
-                    grants={filteredByWeek.filter(
-                      (grant) =>
-                        grant.status === "denied" && isGrantUrlAnalysis(grant)
-                    )}
-                    onSelect={handleGrantSelected}
-                    onApprove={handleApprove}
-                    onDeny={handleReturnToPending}
-                    onUpdateAmount={updateGrantAmount}
-                    onSendGrant={handleSendGrant}
-                    selectedId={selectedGrant?.id}
-                    agentId={agent.agentId}
-                  />
-                </div>
-              </div>
+              {renderGrantSections("denied", handleReturnToPending)}
             </TabsContent>
             <TabsContent value="paid">
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">
-                    Repository Grants
-                  </h3>
-                  <GrantList
-                    grants={filteredByWeek.filter(
-                      (grant) =>
-                        grant.status === "paid" && !isGrantUrlAnalysis(grant)
-                    )}
-                    onSelect={handleGrantSelected}
-                    onApprove={handleApprove}
-                    onDeny={handleDeny}
-                    onUpdateAmount={updateGrantAmount}
-                    onSendGrant={handleSendGrant}
-                    selectedId={selectedGrant?.id}
-                    agentId={agent.agentId}
-                  />
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">URL Grants</h3>
-                  <GrantList
-                    grants={filteredByWeek.filter(
-                      (grant) =>
-                        grant.status === "paid" && isGrantUrlAnalysis(grant)
-                    )}
-                    onSelect={handleGrantSelected}
-                    onApprove={handleApprove}
-                    onDeny={handleDeny}
-                    onUpdateAmount={updateGrantAmount}
-                    onSendGrant={handleSendGrant}
-                    selectedId={selectedGrant?.id}
-                    agentId={agent.agentId}
-                  />
-                </div>
-              </div>
+              {renderGrantSections("paid")}
             </TabsContent>
             <TabsContent value="all">
               <div className="space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">
-                    Repository Grants
-                  </h3>
-                  <GrantList
-                    grants={filteredByWeek.filter(
-                      (grant) => !isGrantUrlAnalysis(grant)
-                    )}
-                    onSelect={handleGrantSelected}
-                    onApprove={handleApprove}
-                    onDeny={handleDeny}
-                    onUpdateAmount={updateGrantAmount}
-                    onSendGrant={handleSendGrant}
-                    selectedId={selectedGrant?.id}
-                    agentId={agent.agentId}
-                  />
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">URL Grants</h3>
-                  <GrantList
-                    grants={filteredByWeek.filter((grant) =>
-                      isGrantUrlAnalysis(grant)
-                    )}
-                    onSelect={handleGrantSelected}
-                    onApprove={handleApprove}
-                    onDeny={handleDeny}
-                    onUpdateAmount={updateGrantAmount}
-                    onSendGrant={handleSendGrant}
-                    selectedId={selectedGrant?.id}
-                    agentId={agent.agentId}
-                  />
-                </div>
+                <GrantSection
+                  title="Repository Grants"
+                  grants={getGrantsByTypeAndStatus("repository", "all")}
+                  onSelect={handleGrantSelected}
+                  onApprove={handleApprove}
+                  onDeny={handleDeny}
+                  onUpdateAmount={updateGrantAmount}
+                  onSendGrant={handleSendGrant}
+                  {...(selectedGrant?.id
+                    ? { selectedId: selectedGrant.id as string }
+                    : {})}
+                  agentId={agent.agentId}
+                />
+                <GrantSection
+                  title="URL Grants"
+                  grants={getGrantsByTypeAndStatus("url", "all")}
+                  onSelect={handleGrantSelected}
+                  onApprove={handleApprove}
+                  onDeny={handleDeny}
+                  onUpdateAmount={updateGrantAmount}
+                  onSendGrant={handleSendGrant}
+                  {...(selectedGrant?.id
+                    ? { selectedId: selectedGrant.id as string }
+                    : {})}
+                  agentId={agent.agentId}
+                />
               </div>
             </TabsContent>
           </>
@@ -559,6 +537,7 @@ export function GrantManagement({ grantsData, agent }: GrantManagerProps) {
           <div className="mt-6">
             <GrantDetail
               grant={selectedGrant}
+              onCloseGrantDetail={onCloseGrantDetail}
               onApprove={handleApprove}
               onDeny={handleDeny}
               tabDetailSelected={tabDetailSelected}

@@ -21,6 +21,7 @@ import { useAccount } from "wagmi";
 // types
 import { Agent } from "@/types";
 import generateId from "@/lib/uuid";
+import { useAsyncRequest } from "@/hooks/useAsyncRequest";
 
 // Añadimos el componente TypewriterEffect
 const TypewriterEffect = ({
@@ -153,6 +154,83 @@ export function ChatWithOwnAgent({
     setIsLlmModelDropdownOpen((prev) => !prev);
   }, []);
 
+  const asyncRequest = useAsyncRequest({
+    pollInterval: 2000,
+    maxPollingTime: 10 * 60 * 1000,
+    onCompleted: (result) => {
+      console.log("Async request completed:", result);
+      handleAsyncResponse(result);
+    },
+    onFailed: (error) => {
+      console.error("Async request failed:", error);
+      setChatHistory((prev) => [
+        ...prev.slice(0, -1),
+        {
+          role: "userAgent",
+          content:
+            "Sorry, there was an error processing your request. Please try again.",
+          isVisible: true,
+        },
+      ]);
+    },
+  });
+
+  const handleAsyncResponse = (data: any) => {
+    if (data.syntheticResponse && data.syntheticResponse[0]) {
+      setChatHistory((prev) => [
+        ...prev.slice(0, -1),
+        {
+          role: "userAgent",
+          content:
+            data.syntheticResponse[0].text ||
+            data.syntheticResponse[0].message ||
+            "Response received",
+          isVisible: true,
+        },
+      ]);
+    }
+
+    // Handle parse response
+    try {
+      const response = data.syntheticResponse || data;
+      const responseData = Array.isArray(response) ? response[0] : response;
+
+      setChatHistory((prev) => [
+        ...prev.slice(0, -1),
+        {
+          role: "userAgent",
+          content:
+            responseData.text || responseData.message || "Response received",
+          action: responseData.action,
+          isVisible: true,
+          metadata: responseData.metadata,
+        },
+      ]);
+    } catch (e) {
+      console.error("Error parsing response:", e);
+      setChatHistory((prev) => [
+        ...prev.slice(0, -1),
+        {
+          role: "userAgent",
+          content: "Response received but couldn't be parsed properly.",
+          isVisible: true,
+        },
+      ]);
+    }
+  };
+
+  const updateThinkingMessage = () => {
+    setChatHistory((prev) => [
+      ...prev.slice(0, -1),
+      {
+        role: "userAgent",
+        content: "Thinking",
+        isVisible: true,
+        isThinking: true,
+      },
+    ]);
+  };
+
   const handleTalkWithAgent = async (message: string) => {
     if (!message.trim() || !agent) return;
 
@@ -208,58 +286,32 @@ export function ChatWithOwnAgent({
     }
 
     try {
-      const response = await axios.post(`/api/message-agent`, {
-        message: messageToSend,
-        userId: address || id,
-        agentId: agent.agentId,
-        llmModelToUse,
+      await asyncRequest.submitRequest("/api/talk-with-a0x-agent", {
+        message: message,
+        userAddress: address,
       });
-      console.log("response", response);
 
-      setChatHistory((prev) =>
-        prev.slice(0, -1).concat({
-          role: "userAgent",
-          content: response.data[0].text,
-          isVisible: true,
-          shouldAnimate: true,
-        })
-      );
-
-      if (
-        agent.name === "token-deployer" &&
-        response.data[0].action ===
-          ResponseTokenDeployerAgent.AWAIT_CONFIRMATION_FOR_TOKEN_DEPLOY
-      ) {
-        setIsAwaitingConfirmation(true);
-        setShowConfirmationModal(true);
-      }
-
-      if (
-        agent.name === "token-deployer" &&
-        response.data[0].action ===
-          ResponseTokenDeployerAgent.TOKEN_ALREADY_CREATED &&
-        refetchAgent
-      ) {
-        refetchAgent();
-
-        // Mostrar el modal y guardar la dirección del token
-        if (response.data[0].metadata.tokenAddress) {
-          setTokenAddress(response.data[0].metadata.tokenAddress);
-          setShowTokenModal(true);
+      setTimeout(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTo({
+            top: scrollContainerRef.current.scrollHeight,
+            behavior: "smooth",
+          });
         }
-      }
+      }, 100);
     } catch (error) {
       console.error("Error sending message:", error);
-      
+
       // Verificar si es un error 504 (Gateway Timeout)
       if (axios.isAxiosError(error) && error.response?.status === 504) {
         setChatHistory((prev) =>
           prev.slice(0, -1).concat({
             role: "userAgent",
-            content: "The agent is processing parallel actions which takes more than 1 minute. In the meantime, you can continue requesting grants through our other channels like Telegram, Twitter, or Farcaster.",
+            content:
+              "The agent is processing parallel actions which takes more than 1 minute. In the meantime, you can continue requesting grants through our other channels like Telegram, Twitter, or Farcaster.",
             isVisible: true,
             shouldAnimate: true,
-            isError: true
+            isError: true,
           })
         );
       } else {
@@ -270,16 +322,61 @@ export function ChatWithOwnAgent({
             content: "Sorry, there was an error processing your request.",
             isVisible: true,
             shouldAnimate: true,
-            isError: true
+            isError: true,
           })
         );
       }
     } finally {
       setIsLoading(false);
       setMessage("");
-      // No necesitamos llamar a handleScroll aquí porque la animación se encargará del scroll
     }
   };
+
+  // Update thinking message based on async request status
+  useEffect(() => {
+    if (asyncRequest.isLoading && asyncRequest.status !== "idle") {
+      updateThinkingMessage();
+    }
+  }, [asyncRequest.status, asyncRequest.isLoading]);
+
+  // Handle async response
+  useEffect(() => {
+    if (asyncRequest.status === "completed" && asyncRequest.result) {
+      const response = asyncRequest.result;
+
+      setChatHistory((prev) =>
+        prev.slice(0, -1).concat({
+          role: "userAgent",
+          content: response[0]?.text || "No response text available",
+          isVisible: true,
+          shouldAnimate: true,
+        })
+      );
+
+      if (
+        agent.name === "token-deployer" &&
+        response[0]?.action ===
+          ResponseTokenDeployerAgent.AWAIT_CONFIRMATION_FOR_TOKEN_DEPLOY
+      ) {
+        setIsAwaitingConfirmation(true);
+        setShowConfirmationModal(true);
+      }
+
+      if (
+        agent.name === "token-deployer" &&
+        response[0]?.action ===
+          ResponseTokenDeployerAgent.TOKEN_ALREADY_CREATED &&
+        refetchAgent
+      ) {
+        refetchAgent();
+
+        if (response[0]?.metadata?.tokenAddress) {
+          setTokenAddress(response[0].metadata.tokenAddress);
+          setShowTokenModal(true);
+        }
+      }
+    }
+  }, [asyncRequest.status, asyncRequest.result, agent.name, refetchAgent]);
 
   const handleResetChat = async () => {
     localStorage.removeItem("chatHistory");
